@@ -1,0 +1,19 @@
+-r base.txt
+# PaddleOCR stack — use paddlepaddle-gpu if CUDA is available on VPS
+paddlepaddle==2.6.*
+paddleocr==2.8.*
+paddlex==2.1.*
+paddle2onnx==1.2.*
+onnxruntime==1.18.*
+# Image processing
+opencv-python-headless==4.10.*
+scikit-image==0.23.*
+imutils==0.5.*
+deskew==1.5.*
+Pillow==10.*
+numpy==1.26.*
+# PDF processing
+pdfplumber==0.11.*
+pdf2image==1.17.*
+# Async
+aiofiles==23.2.*

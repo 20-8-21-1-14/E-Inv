@@ -1,0 +1,37 @@
+# Local development overrides — applied automatically by docker compose
+version: "3.9"
+
+services:
+  core-api:
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/core-api:/app/service
+      - ./common:/app/common
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  admin-api:
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./services/admin-api:/app/service
+      - ./common:/app/common
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+  ocr-worker:
+    volumes:
+      - ./services/ocr-worker:/app/service
+      - ./common:/app/common
+      - model_registry:/app/model_registry
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  minio:
+    ports:
+      - "9000:9000"

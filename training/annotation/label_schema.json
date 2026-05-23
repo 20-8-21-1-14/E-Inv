@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "doc_types": {
+    "vat_invoice": {
+      "header_fields": [
+        "invoice_number", "invoice_date", "invoice_form", "invoice_series",
+        "seller_name", "seller_tax_code", "seller_address", "seller_bank",
+        "buyer_name", "buyer_tax_code", "buyer_address",
+        "payment_method", "currency"
+      ],
+      "table_fields": [
+        "line_number", "item_name", "item_code", "unit",
+        "quantity", "unit_price", "amount",
+        "discount_rate", "discount_amount",
+        "tax_rate", "tax_amount", "total_amount"
+      ],
+      "footer_fields": [
+        "subtotal", "total_discount", "total_tax", "grand_total",
+        "amount_in_words", "digital_signature", "buyer_signature"
+      ],
+      "column_aliases": {
+        "item_name":   ["Tên hàng hóa", "Tên hàng hóa, dịch vụ", "Diễn giải", "Tên dịch vụ", "Name"],
+        "item_code":   ["Mã hàng", "Mã HH", "Mã số", "Code"],
+        "unit":        ["Đơn vị tính", "ĐVT", "Đơn vị", "Unit"],
+        "quantity":    ["Số lượng", "SL", "Qty", "Quantity"],
+        "unit_price":  ["Đơn giá", "Giá bán", "Unit Price", "Giá"],
+        "amount":      ["Thành tiền", "Tiền hàng", "Amount", "Tổng tiền hàng"],
+        "discount_rate":   ["Chiết khấu %", "CK %", "Discount %"],
+        "discount_amount": ["Tiền chiết khấu", "CK", "Discount"],
+        "tax_rate":    ["Thuế suất", "Thuế GTGT %", "VAT %", "Tax Rate"],
+        "tax_amount":  ["Tiền thuế GTGT", "Tiền thuế", "VAT Amount", "Tax"],
+        "total_amount":["Tổng cộng", "Total", "Tổng thanh toán"]
+      }
+    },
+    "freight_invoice": {
+      "header_fields": [
+        "invoice_number", "invoice_date", "carrier_name", "carrier_tax_code",
+        "shipper_name", "consignee_name", "container_id", "bol_number"
+      ],
+      "table_fields": [
+        "line_number", "item_name", "unit", "quantity", "unit_price",
+        "amount", "tax_rate", "tax_amount", "total_amount"
+      ],
+      "footer_fields": ["subtotal", "total_tax", "grand_total", "amount_in_words"]
+    }
+  }
+}

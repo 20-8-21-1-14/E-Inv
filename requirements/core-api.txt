@@ -1,0 +1,7 @@
+-r base.txt
+fastapi==0.111.*
+uvicorn[standard]==0.30.*
+pyjwt==2.8.*
+passlib[bcrypt]==1.7.*
+prometheus-fastapi-instrumentator==7.0.*
+aiofiles==23.2.*
