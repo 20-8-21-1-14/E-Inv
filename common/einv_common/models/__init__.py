@@ -4,6 +4,7 @@ from einv_common.models.extraction import ExtractionResult, InvoiceLineItem, Fie
 from einv_common.models.hitl import HitlQueue
 from einv_common.models.audit import AuditLog
 from einv_common.models.user import AdminUser
+from einv_common.models.training import ColumnAliasProposal, SchemaVersion, ModelVersion
 
 __all__ = [
     "Tenant", "ApiKey",
@@ -12,4 +13,5 @@ __all__ = [
     "HitlQueue",
     "AuditLog",
     "AdminUser",
+    "ColumnAliasProposal", "SchemaVersion", "ModelVersion",
 ]

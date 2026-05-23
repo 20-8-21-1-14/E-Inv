@@ -57,3 +57,14 @@ def export_corrections() -> dict:
 async def _run_export() -> int:
     from pipeline.feedback_exporter import export_corrections as do_export
     return await do_export()
+
+
+@app.task(name="tasks.check_drift")
+def check_drift() -> dict:
+    """Weekly: compare 7-day vs 30-day confidence average and alert on drift."""
+    return asyncio.run(_run_drift_check())
+
+
+async def _run_drift_check() -> dict:
+    from pipeline.drift_monitor import check_drift as do_check
+    return await do_check()

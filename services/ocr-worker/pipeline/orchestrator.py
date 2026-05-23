@@ -84,7 +84,7 @@ async def run(document_id: str, tenant_id: str) -> dict:
             threshold_llm  = float(os.environ.get("OCR_THRESHOLD_LLM", "0.75"))
             anthropic_key  = os.environ.get("ANTHROPIC_API_KEY")
 
-            result = await _run_pipeline(
+            result, unmatched_headers = await _run_pipeline(
                 content=content,
                 declared_format=doc.source_format,
                 threshold_done=threshold_done,
@@ -100,6 +100,10 @@ async def run(document_id: str, tenant_id: str) -> dict:
                 result=result,
                 threshold_done=threshold_done,
             )
+
+            # ── Record unmatched column headers for schema evolution ──────────
+            if unmatched_headers:
+                await _record_alias_proposals(session, unmatched_headers, doc.doc_type)
             doc.status = final_status
             doc.processed_at = datetime.now(timezone.utc)
             await session.commit()
@@ -150,9 +154,11 @@ async def _run_pipeline(
     threshold_done: float,
     threshold_llm: float,
     anthropic_api_key: str | None,
-) -> PipelineResult:
+) -> tuple[PipelineResult, list[str]]:
+    """Returns (PipelineResult, unmatched_column_headers)."""
     t0 = time.monotonic()
     preprocess_steps: list[str] = []
+    all_unmatched: list[str] = []
 
     # ── Stage 1: Format detection ─────────────────────────────────────────────
     fmt = await detect_format(content, declared_format)
@@ -168,6 +174,7 @@ async def _run_pipeline(
             threshold_done=threshold_done, threshold_llm=threshold_llm,
         )
         ocr_engine = "xml_bypass"
+        # XML path has no column mapping — nothing to collect
 
     # ── Stage 3: Image / PDF path ─────────────────────────────────────────────
     elif fmt in ("pdf", "image"):
@@ -192,10 +199,12 @@ async def _run_pipeline(
         # Extract per page then merge
         page_extractions: list[ExtractionData] = []
         all_field_confs: list[FieldData] = []
+        all_unmatched: list[str] = []
         for ocr_result in ocr_results:
-            page_data, page_confs = extract(ocr_result)
+            page_data, page_confs, page_unmatched = extract(ocr_result)
             page_extractions.append(page_data)
             all_field_confs.extend(page_confs)
+            all_unmatched.extend(page_unmatched)
 
         extraction = merge_page_results(page_extractions)
         field_confs = all_field_confs
@@ -231,7 +240,7 @@ async def _run_pipeline(
         raise UnsupportedFormatError(f"Unsupported document format: {fmt}")
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)
-    return PipelineResult(
+    pipeline_result = PipelineResult(
         extraction=extraction,
         field_confidences=field_confs,
         validation_errors=validation_errors,
@@ -240,6 +249,7 @@ async def _run_pipeline(
         processing_time_ms=elapsed_ms,
         preprocess_steps=preprocess_steps,
     )
+    return pipeline_result, all_unmatched
 
 
 # ---------------------------------------------------------------------------
@@ -368,3 +378,37 @@ async def _persist_result(
         ))
 
     return final_status
+
+
+async def _record_alias_proposals(
+    session: AsyncSession,
+    unmatched_headers: list[str],
+    doc_type: str,
+) -> None:
+    """Upsert ColumnAliasProposal records for headers that failed to map.
+
+    Uses INSERT … ON CONFLICT DO UPDATE so repeated occurrences just increment
+    seen_count and update last_seen_at — no duplicate rows.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from einv_common.models.training import ColumnAliasProposal
+
+    now = datetime.now(timezone.utc)
+    for header in set(unmatched_headers):  # deduplicate within one document
+        stmt = pg_insert(ColumnAliasProposal).values(
+            unmatched_header=header,
+            doc_type=doc_type,
+            seen_count=1,
+            first_seen_at=now,
+            last_seen_at=now,
+        ).on_conflict_do_update(
+            constraint="uq_proposal_header_doctype",
+            set_={
+                "seen_count": ColumnAliasProposal.seen_count + 1,
+                "last_seen_at": now,
+            },
+        )
+        await session.execute(stmt)
+
+    logger.info("orchestrator.alias_proposals_recorded", count=len(set(unmatched_headers)))

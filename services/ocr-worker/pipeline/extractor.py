@@ -86,6 +86,7 @@ def _cell_conf(cells: list[TableCell], row: int, col: int) -> float:
 class _ColMap(NamedTuple):
     mapping: dict[int, str]   # col_index → canonical field
     header_row: int
+    unmatched: list[str]      # raw headers that failed to map
 
 
 def _find_charge_table(tables: list[TableRegion]) -> tuple[TableRegion, _ColMap] | None:
@@ -103,7 +104,7 @@ def _find_charge_table(tables: list[TableRegion]) -> tuple[TableRegion, _ColMap]
             header_texts = [c.text for c in sorted(header_cells, key=lambda c: c.col)]
             if not header_texts:
                 continue
-            mapping = map_headers(header_texts)
+            mapping, unmatched = map_headers(header_texts)
             if len(mapping) < _MIN_CHARGE_COLS:
                 continue
             if not (_CHARGE_ANCHORS & set(mapping.values())):
@@ -111,7 +112,7 @@ def _find_charge_table(tables: list[TableRegion]) -> tuple[TableRegion, _ColMap]
             score = len(mapping)
             if score > best_score:
                 best_score = score
-                best = (table, _ColMap(mapping=mapping, header_row=hrow))
+                best = (table, _ColMap(mapping=mapping, header_row=hrow, unmatched=unmatched))
 
     return best
 
@@ -269,29 +270,34 @@ def _extract_from_text(text_blocks: list[TextBlock]) -> tuple[ExtractionData, li
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def extract(ocr_result: OCRPageResult) -> tuple[ExtractionData, list[FieldData]]:
+def extract(ocr_result: OCRPageResult) -> tuple[ExtractionData, list[FieldData], list[str]]:
     """Extract structured invoice data from one page's OCR result.
 
     Returns:
-        (ExtractionData, list[FieldData]) — extraction and per-field confidences.
+        (ExtractionData, list[FieldData], list[str])
+        — extraction, per-field confidences, unmatched column headers.
+
+    Unmatched column headers should be passed to the orchestrator so they
+    can be recorded as ColumnAliasProposal records for admin review.
     """
-    # Header / footer from text blocks
     data, text_confs = _extract_from_text(ocr_result.text_blocks)
     all_confs = list(text_confs)
+    all_unmatched: list[str] = []
 
-    # Charge table
     found = _find_charge_table(ocr_result.tables)
     if found:
         table, col_map = found
         items, item_confs = _parse_charge_rows(table, col_map)
         data.line_items = items
         all_confs.extend(item_confs)
+        all_unmatched.extend(col_map.unmatched)
         logger.info(
             "extractor.table_found",
             line_items=len(items),
             mapped_cols=list(col_map.mapping.values()),
+            unmatched=col_map.unmatched,
         )
     else:
         logger.warning("extractor.no_charge_table", tables=len(ocr_result.tables))
 
-    return data, all_confs
+    return data, all_confs, all_unmatched

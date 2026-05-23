@@ -12,16 +12,23 @@ app.conf.update(
     timezone="Asia/Ho_Chi_Minh",
     enable_utc=True,
     task_track_started=True,
-    task_acks_late=True,         # re-queue on worker crash
-    worker_prefetch_multiplier=1,  # one task at a time per worker
+    task_acks_late=True,
+    worker_prefetch_multiplier=1,
     task_routes={
-        "tasks.process_document": {"queue": "ocr"},
+        "tasks.process_document":   {"queue": "ocr"},
         "tasks.export_corrections": {"queue": "beat"},
+        "tasks.check_drift":        {"queue": "beat"},
     },
     beat_schedule={
+        # Nightly: export HITL corrections → MinIO training bucket
         "export-hitl-corrections-nightly": {
             "task": "tasks.export_corrections",
-            "schedule": 86400,  # every 24h
+            "schedule": 86_400,    # 24 h
+        },
+        # Weekly: compare 7-day vs 30-day confidence; alert on drift
+        "check-confidence-drift-weekly": {
+            "task": "tasks.check_drift",
+            "schedule": 604_800,   # 7 days
         },
     },
 )
