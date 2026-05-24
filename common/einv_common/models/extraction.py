@@ -92,6 +92,8 @@ class InvoiceLineItem(Base):
     is_corrected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     corrected_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     corrected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Tracks whether this line item has been exported to training data
+    exported: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     result: Mapped["ExtractionResult"] = relationship("ExtractionResult", back_populates="line_items")
 

@@ -28,7 +28,7 @@ def _detect_format_sync(content: bytes, declared_format: str) -> str:
 
 
 async def detect_format(content: bytes, declared_format: str) -> str:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(_executor, _detect_format_sync, content, declared_format)
 
 
@@ -43,7 +43,7 @@ def _pdf_to_images_sync(content: bytes, dpi: int = 300) -> list:
 
 async def pdf_to_images(content: bytes, dpi: int = 300) -> list:
     """Returns list[np.ndarray], one image per PDF page."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     images = await loop.run_in_executor(_executor, _pdf_to_images_sync, content, dpi)
     logger.debug("pdf_to_images", pages=len(images), dpi=dpi)
     return images
@@ -60,7 +60,7 @@ def _bytes_to_image_sync(content: bytes) -> object:
 
 async def bytes_to_image(content: bytes):
     """Convert raw image bytes → np.ndarray."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(_executor, _bytes_to_image_sync, content)
 
 

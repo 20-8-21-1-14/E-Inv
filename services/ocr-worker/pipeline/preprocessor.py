@@ -9,8 +9,9 @@ Stage order (CV-validated):
   6. Deskew  (Hough-line angle estimation)
   7. Denoise  (fastNlMeansDenoisingColored)
   8. CLAHE contrast enhancement
-  9. Adaptive binarization  (Sauvola threshold)
 
+Output is always a continuous BGR uint8 image — PaddleOCR models are trained
+on continuous BGR input and must NOT receive a binarized single-channel image.
 Each step is optional and logged. CPU-bound — call via run_in_executor.
 """
 
@@ -93,10 +94,6 @@ def preprocess(image: np.ndarray, dpi_hint: int = 0) -> PreprocessResult:
     # ── 8. CLAHE ─────────────────────────────────────────────────────────────
     img = _clahe(img)
     steps.append("clahe")
-
-    # ── 9. Binarize (Sauvola-style adaptive threshold) ───────────────────────
-    img = _binarize(img)
-    steps.append("binarize")
 
     logger.debug("preprocess.done", steps=steps, effective_dpi=effective_dpi,
                  shape=img.shape)

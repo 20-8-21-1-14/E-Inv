@@ -94,7 +94,7 @@ async def _get_model() -> Any:
         return _structure_model
     async with _model_lock:
         if _structure_model is None:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(_executor, _load_model_sync)
     return _structure_model
 
@@ -185,7 +185,7 @@ def _parse_structure_result(regions: list[dict]) -> OCRPageResult:
 async def run_ocr(image: np.ndarray) -> OCRPageResult:
     """Run PPStructure on one image and return structured OCR results."""
     model = await _get_model()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     regions: list[dict] = await loop.run_in_executor(
         _executor, _run_inference_sync, model, image
     )

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
 import json
 import sys
 from datetime import datetime, timezone
@@ -70,7 +71,7 @@ async def run(args: argparse.Namespace) -> None:
         current = result.scalar_one_or_none()
 
         if current:
-            content = dict(current.content)
+            content = copy.deepcopy(current.content)
             new_version = bump_minor(current.version)
         else:
             # Bootstrap from label_schema.json

@@ -98,8 +98,8 @@ def _find_charge_table(tables: list[TableRegion]) -> tuple[TableRegion, _ColMap]
         if not table.cells:
             continue
         max_row = max(c.row for c in table.cells)
-        # Try row 0 and row 1 as candidate header rows
-        for hrow in range(min(2, max_row)):
+        # Try rows 0, 1, and 2 as candidate header rows (some invoices have a merged title row)
+        for hrow in range(min(3, max_row + 1)):
             header_cells = [c for c in table.cells if c.row == hrow]
             header_texts = [c.text for c in sorted(header_cells, key=lambda c: c.col)]
             if not header_texts:

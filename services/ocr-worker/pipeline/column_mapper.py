@@ -124,14 +124,13 @@ def _load_aliases_from_db() -> tuple[dict[str, list[str]], str] | None:
                 )
                 return result.scalar_one_or_none()
 
-        # Run in a fresh event loop — this is called from sync context (ThreadPoolExecutor)
+        # Run in a fresh event loop — this is called from sync context (ThreadPoolExecutor).
+        # If there is already a running loop in this thread, we cannot block it.
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Can't block a running loop; fall back to file
-                return None
+            asyncio.get_running_loop()
+            return None  # Running loop detected — fall back to file
         except RuntimeError:
-            pass
+            pass  # No running loop in this thread — safe to call asyncio.run()
 
         sv = asyncio.run(asyncio.wait_for(_fetch(), timeout=2.0))
         if sv is None:
@@ -148,7 +147,7 @@ def _load_aliases_from_db() -> tuple[dict[str, list[str]], str] | None:
         return merged, sv.version
 
     except Exception as exc:
-        logger.debug("column_mapper.db_schema_unavailable", error=str(exc))
+        logger.warning("column_mapper.db_schema_unavailable", error=str(exc))
         return None
 
 
@@ -263,6 +262,9 @@ def map_headers(raw_headers: list[str]) -> tuple[dict[int, str], list[str]]:
         if field and field not in seen:
             result[idx] = field
             seen.add(field)
+        elif field:
+            # Duplicate column for same canonical field — skip silently (not unmatched)
+            pass
         elif raw and raw.strip():
             unmatched.append(raw.strip())
 

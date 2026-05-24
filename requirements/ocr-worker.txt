@@ -12,6 +12,8 @@ imutils==0.5.*
 deskew==1.5.*
 Pillow==10.*
 numpy==1.26.*
+# Security
+defusedxml==0.7.*
 # PDF processing
 pdfplumber==0.11.*
 pdf2image==1.17.*

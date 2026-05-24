@@ -126,6 +126,7 @@ async def run(document_id: str, tenant_id: str) -> dict:
             }
 
         except Exception as exc:
+            await session.rollback()
             doc.status = "failed"
             doc.error_message = str(exc)[:1000]
             doc.processed_at = datetime.now(timezone.utc)
@@ -168,7 +169,8 @@ async def _run_pipeline(
     if fmt == "xml":
         extraction = parse_xml(content)
         validation_errors = validate_extraction(extraction)
-        field_confs: list[FieldData] = []
+        # Assign confidence 1.0 for every populated field — XML is the canonical source
+        field_confs = _xml_synthetic_confs(extraction)
         score, routing = compute_score(
             extraction, field_confs, validation_errors,
             threshold_done=threshold_done, threshold_llm=threshold_llm,
@@ -185,7 +187,7 @@ async def _run_pipeline(
             pages = [img]
 
         # Preprocess pages concurrently in CPU executor
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         preprocess_results = await asyncio.gather(*[
             loop.run_in_executor(_CPU_EXECUTOR, preprocess, img)
             for img in pages
@@ -378,6 +380,36 @@ async def _persist_result(
         ))
 
     return final_status
+
+
+def _xml_synthetic_confs(extraction: ExtractionData) -> list[FieldData]:
+    """Generate 1.0-confidence FieldData entries for all populated XML fields.
+
+    The scorer's weighted average starts from 0.5 when field_confs is empty.
+    XML data is canonical (from the issuer's signed file), so every present
+    field should score 1.0, not 0.5.
+    """
+    confs: list[FieldData] = []
+    for attr in (
+        "invoice_number", "invoice_date", "invoice_form", "invoice_series",
+        "seller_name", "seller_tax_code", "seller_address",
+        "buyer_name", "buyer_tax_code",
+        "grand_total", "total_tax", "subtotal",
+    ):
+        val = getattr(extraction, attr, None)
+        if val is not None:
+            confs.append(FieldData(name=attr, value=str(val), confidence=1.0))
+
+    for idx, item in enumerate(extraction.line_items, start=1):
+        for field_name in ("item_name", "quantity", "unit_price", "amount"):
+            val = getattr(item, field_name, None)
+            if val is not None:
+                confs.append(FieldData(
+                    name=f"line_{idx}.{field_name}",
+                    value=str(val),
+                    confidence=1.0,
+                ))
+    return confs
 
 
 async def _record_alias_proposals(

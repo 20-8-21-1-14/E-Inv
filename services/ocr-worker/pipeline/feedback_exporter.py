@@ -54,13 +54,22 @@ async def export_corrections(export_date: date | None = None) -> int:
             _build_field_lines(field_records)
             + _build_item_lines(item_records)
         )
+
+        # Upload first — if upload fails we do NOT mark as exported, so next
+        # nightly run will retry the same records cleanly.
         await _upload(lines, export_date)
 
         field_ids = [r.id for r in field_records]
         item_ids  = [r.id for r in item_records]
-        await _mark_field_exported(session, field_ids)
-        await _mark_item_exported(session, item_ids)
-        await session.commit()
+        try:
+            await _mark_field_exported(session, field_ids)
+            await _mark_item_exported(session, item_ids)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.exception("feedback_exporter.mark_exported_failed",
+                             field_count=len(field_ids), item_count=len(item_ids))
+            raise
 
     logger.info("feedback_exporter.done", exported=total, date=str(export_date))
     return total
@@ -86,6 +95,7 @@ async def _fetch_line_item_corrections(session: AsyncSession) -> list[InvoiceLin
     stmt = (
         select(InvoiceLineItem)
         .where(InvoiceLineItem.is_corrected == True)    # noqa: E712
+        .where(InvoiceLineItem.exported == False)       # noqa: E712
         .limit(_BATCH_LIMIT)
     )
     result = await session.execute(stmt)
@@ -159,5 +169,10 @@ async def _mark_field_exported(session: AsyncSession, ids: list[UUID]) -> None:
 
 
 async def _mark_item_exported(session: AsyncSession, ids: list[UUID]) -> None:
-    # InvoiceLineItem has no exported flag; log only
-    logger.debug("feedback_exporter.items_exported", count=len(ids))
+    if not ids:
+        return
+    await session.execute(
+        update(InvoiceLineItem)
+        .where(InvoiceLineItem.id.in_(ids))
+        .values(exported=True)
+    )

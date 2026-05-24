@@ -8,7 +8,10 @@ import asyncio
 import structlog
 
 from celery_app import app
-from einv_common.exceptions import RetryableError, NonRetryableError
+from einv_common.exceptions import NonRetryableError, RetryableError
+
+# Low-level errors that indicate transient infrastructure problems (should retry)
+_RETRYABLE_EXC = (OSError, ConnectionError, TimeoutError)
 
 logger = structlog.get_logger()
 
@@ -37,6 +40,9 @@ def process_document(self, document_id: str, tenant_id: str) -> dict:
     except RetryableError as exc:
         log.warning("task.failed.retryable", error=str(exc), retries=self.request.retries)
         raise
+    except _RETRYABLE_EXC as exc:
+        log.warning("task.failed.retryable_infra", error=str(exc), exc_type=type(exc).__name__)
+        raise RetryableError(str(exc)) from exc
     except Exception as exc:
         log.error("task.failed.unexpected", error=str(exc), exc_type=type(exc).__name__)
         raise NonRetryableError(str(exc)) from exc

@@ -96,7 +96,11 @@ async def check_drift() -> dict:
             **result,
             action="check_new_invoice_templates_and_schema",
         )
-        await _create_hitl_drift_alert(result)
+        try:
+            await _create_hitl_drift_alert(result)
+        except Exception:
+            # Alert creation failure must not kill the weekly drift check task
+            logger.exception("drift_monitor.alert_creation_failed")
     else:
         logger.info("drift_monitor.ok", **result)
 

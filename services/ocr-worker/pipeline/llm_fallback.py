@@ -169,7 +169,7 @@ async def run_llm_fallback(
     Raises:
         LLMError on API failure (retryable).
     """
-    img_b64 = await asyncio.get_event_loop().run_in_executor(None, _image_to_b64, image)
+    img_b64 = await asyncio.get_running_loop().run_in_executor(None, _image_to_b64, image)
 
     payload = {
         "model": _MODEL,

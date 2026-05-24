@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
-from xml.etree import ElementTree as ET
 
+import defusedxml.ElementTree as ET
 import structlog
 
 from pipeline.models import ExtractionData, LineItemData
@@ -53,7 +53,15 @@ def _decimal(raw: str | None) -> Decimal | None:
     if not raw:
         return None
     try:
+        # Replace comma thousands/decimal separators → dot, then strip non-numeric chars
         cleaned = re.sub(r"[^\d.\-]", "", raw.replace(",", "."))
+        parts = cleaned.split(".")
+        if len(parts) > 2:
+            # "1.234.567" — all but last are thousands groups
+            cleaned = "".join(parts[:-1]) + "." + parts[-1]
+        elif len(parts) == 2 and len(parts[-1]) == 3 and len(parts[0]) <= 3:
+            # "100.000" — ambiguous; treat as integer thousands separator
+            cleaned = "".join(parts)
         return Decimal(cleaned)
     except InvalidOperation:
         return None
