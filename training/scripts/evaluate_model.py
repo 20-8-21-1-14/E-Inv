@@ -72,17 +72,32 @@ def load_test_pairs(path: Path) -> list[tuple[str, str]]:
 
 
 def run_inference(model_dir: str, image_paths: list[str]) -> list[str]:
-    """Run PaddleOCR rec inference on a list of image paths."""
+    """Run PaddleOCR recognition-only inference on a list of single-text-line crop paths.
+
+    Each image should be a word/line crop produced by prepare_dataset.py.
+    With det=False, PaddleOCR treats the entire image as one recognition region.
+    Result format: [[('text', confidence), ...]] — one list per input image.
+    """
     try:
         from paddleocr import PaddleOCR  # type: ignore
         ocr = PaddleOCR(
-            use_angle_cls=False, lang="vi", show_log=False,
+            use_angle_cls=False,
+            lang="vi",
+            show_log=False,
             rec_model_dir=model_dir,
+            # Use the same dict as training — vi_dict.txt must be on PYTHONPATH
+            # (it lives inside the paddleocr package)
         )
         results = []
         for img_path in image_paths:
             res = ocr.ocr(img_path, det=False, cls=False)
-            text = res[0][0][0] if res and res[0] else ""
+            # res = [[('predicted_text', conf)]] for a single crop
+            if res and res[0]:
+                line_results = res[0]
+                # Join all recognised lines (handles multi-line crops gracefully)
+                text = " ".join(r[0] for r in line_results if isinstance(r, (list, tuple)))
+            else:
+                text = ""
             results.append(text)
         return results
     except ImportError:

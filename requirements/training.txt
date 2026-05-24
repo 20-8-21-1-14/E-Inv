@@ -1,6 +1,8 @@
 # Training-only — NOT included in any Docker image
 paddlepaddle==2.6.*
 paddleocr==2.8.*
+pdf2image==1.17.*   # PDF → image for crop extraction in prepare_dataset.py
+pyyaml==6.0.*       # YAML generation for finetune configs
 paddle2onnx==1.2.*
 onnxruntime==1.18.*
 # Data & annotation

@@ -36,10 +36,8 @@ def _validate_webhook_url(url: str) -> None:
     Does not perform DNS resolution — hostname-based bypass is an accepted
     residual risk; mitigate further with egress firewall rules on the host.
     """
-    try:
-        parsed = urllib.parse.urlparse(url)
-    except Exception as exc:
-        raise ValueError(f"Malformed webhook URL: {exc}") from exc
+    # urlparse never raises — no try/except needed
+    parsed = urllib.parse.urlparse(url)
 
     if parsed.scheme not in ("http", "https"):
         raise ValueError(
@@ -53,18 +51,18 @@ def _validate_webhook_url(url: str) -> None:
     if hostname.lower() in ("localhost", "localhost.localdomain"):
         raise ValueError("Webhook URL must not target localhost")
 
-    # If hostname is a literal IP address, check against blocked ranges
+    # Only check literal IP addresses. For hostnames, DNS resolution happens at
+    # request time — mitigate DNS-based SSRF with egress firewall rules.
     try:
         addr = ipaddress.ip_address(hostname)
-        for net in _BLOCKED_NETS:
-            if addr in net:
-                raise ValueError(
-                    f"Webhook URL targets a private/reserved address ({hostname})"
-                )
     except ValueError:
-        raise
-    except Exception:
-        pass  # Not a literal IP — hostname; DNS-based SSRF is mitigated at network level
+        return  # hostname is not a literal IP — safe to proceed
+    # else: hostname IS a literal IP — check against blocked ranges
+    for net in _BLOCKED_NETS:
+        if addr in net:
+            raise ValueError(
+                f"Webhook URL targets a private/reserved address ({hostname})"
+            )
 
 
 async def dispatch(

@@ -362,6 +362,10 @@ async def _persist_result(
                 raw_value=fd.raw_value,
                 confidence=fd.confidence,
                 exported=False,
+                bbox=(
+                    {"x1": fd.bbox[0], "y1": fd.bbox[1], "x2": fd.bbox[2], "y2": fd.bbox[3]}
+                    if fd.bbox else None
+                ),
             ))
 
     # Determine final status

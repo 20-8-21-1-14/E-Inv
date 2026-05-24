@@ -49,3 +49,31 @@ migrations/versions/*.pyc
 # MinIO local data
 minio_data/
 pgdata/
+
+.claude/
+
+# PaddlePaddle / model weight files (too large for git)
+training/pretrain_models/
+training/output/
+*.pdparams
+*.pdmodel
+*.pdiparams
+*.pdopt
+*.tar
+*.tar.gz
+
+# Secrets & certificates
+secrets/
+*.key
+*.pem
+*.crt
+*.p12
+
+# MLflow run artifacts
+mlruns/
+mlartifacts/
+
+# Coverage / test artefacts
+.coverage
+htmlcov/
+.pytest_cache/

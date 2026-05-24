@@ -248,20 +248,34 @@ _HEADER_PATTERNS: dict[str, list[str]] = {
 
 
 def _extract_from_text(text_blocks: list[TextBlock]) -> tuple[ExtractionData, list[FieldData]]:
-    all_text = "\n".join(b.text for b in text_blocks)
-    avg_conf = (sum(b.confidence for b in text_blocks) / len(text_blocks)) if text_blocks else 1.0
+    """Extract header fields from text blocks, one block at a time.
 
+    Per-block search (rather than concatenating all text) lets us record the
+    bounding box of the matched region — critical for producing image crops for
+    PaddleOCR recognition model finetuning.
+    """
     data = ExtractionData()
     confs: list[FieldData] = []
+    found: set[str] = set()
 
-    for field, patterns in _HEADER_PATTERNS.items():
-        for pat in patterns:
-            m = re.search(pat, all_text, re.IGNORECASE)
-            if m:
-                value = m.group(1).strip()
-                setattr(data, field, value)
-                confs.append(FieldData(name=field, value=value, confidence=avg_conf))
-                break
+    for block in text_blocks:
+        for field_name, patterns in _HEADER_PATTERNS.items():
+            if field_name in found:
+                continue
+            for pat in patterns:
+                m = re.search(pat, block.text, re.IGNORECASE)
+                if m:
+                    value = m.group(1).strip()
+                    setattr(data, field_name, value)
+                    confs.append(FieldData(
+                        name=field_name,
+                        value=value,
+                        raw_value=m.group(0),
+                        confidence=block.confidence,
+                        bbox=block.bbox,
+                    ))
+                    found.add(field_name)
+                    break
 
     return data, confs
 

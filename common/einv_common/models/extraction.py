@@ -122,6 +122,9 @@ class FieldConfidence(Base):
     corrected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Tracks whether this correction has been exported to training data
     exported: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Pixel bounding box of the OCR region: {"x1": int, "y1": int, "x2": int, "y2": int}
+    # Populated during OCR inference; enables image-crop generation for rec finetuning
+    bbox: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     result: Mapped["ExtractionResult"] = relationship(
         "ExtractionResult", back_populates="field_confidences"

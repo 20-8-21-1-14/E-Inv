@@ -36,6 +36,9 @@ class FieldData:
     value: str | None
     confidence: float = 1.0
     raw_value: str | None = None   # pre-normalisation value for HITL
+    # Pixel bounding box of the OCR region (x1, y1, x2, y2). Stored in
+    # FieldConfidence so the training pipeline can crop images without re-running OCR.
+    bbox: tuple[int, int, int, int] | None = None
 
 
 @dataclass

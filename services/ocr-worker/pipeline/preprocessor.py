@@ -257,12 +257,3 @@ def _clahe(img: np.ndarray) -> np.ndarray:
     return clahe.apply(img)
 
 
-def _binarize(img: np.ndarray) -> np.ndarray:
-    """Adaptive Gaussian threshold — works well for uneven lighting on invoices."""
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
-    binary = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, blockSize=31, C=10
-    )
-    # Return 3-channel so downstream OCR models receive expected shape
-    return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)

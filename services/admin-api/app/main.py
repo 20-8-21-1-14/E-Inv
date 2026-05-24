@@ -5,6 +5,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from einv_common.config import settings
 from einv_common.db import check_db, engine
+from app.routers import auth, corrections, models_admin, review, schemas_admin, tenants
 
 logger = structlog.get_logger()
 
@@ -27,6 +28,13 @@ app = FastAPI(
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
+app.include_router(auth.router,           prefix="/admin/auth",              tags=["auth"])
+app.include_router(tenants.router,        prefix="/admin/tenants",           tags=["tenants"])
+app.include_router(review.router,         prefix="/admin/review-queue",      tags=["hitl"])
+app.include_router(corrections.router,    prefix="/admin/field-corrections",  tags=["hitl"])
+app.include_router(schemas_admin.router,  prefix="/admin",                   tags=["schemas"])
+app.include_router(models_admin.router,   prefix="/admin/models",            tags=["models"])
+
 
 @app.get("/health/live", tags=["health"])
 async def liveness():
@@ -37,8 +45,3 @@ async def liveness():
 async def readiness():
     await check_db()
     return {"status": "ok"}
-
-
-# Routers registered in Stage 6
-# from app.routers import hitl, tenants, system, users, auth
-# app.include_router(auth.router, prefix="/admin/auth", tags=["auth"])
