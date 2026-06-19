@@ -5,6 +5,7 @@ from einv_common.models.hitl import HitlQueue
 from einv_common.models.audit import AuditLog
 from einv_common.models.user import AdminUser
 from einv_common.models.training import ColumnAliasProposal, SchemaVersion, ModelVersion
+from einv_common.models.webhook import WebhookDelivery
 
 __all__ = [
     "Tenant", "ApiKey",
@@ -14,4 +15,5 @@ __all__ = [
     "AuditLog",
     "AdminUser",
     "ColumnAliasProposal", "SchemaVersion", "ModelVersion",
+    "WebhookDelivery",
 ]

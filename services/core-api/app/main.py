@@ -11,7 +11,7 @@ from einv_common.config import settings
 from einv_common.db import check_db, engine
 from einv_common.storage import get_storage_client
 
-from app.routers import documents, webhooks
+from app.routers import documents, exports, webhooks
 
 logger = structlog.get_logger()
 
@@ -75,6 +75,7 @@ async def readiness():
 # ── Routers ───────────────────────────────────────────────────────────────────
 
 app.include_router(documents.router, prefix="/v1/documents", tags=["documents"])
+app.include_router(exports.router, prefix="/v1/documents", tags=["exports"])
 app.include_router(webhooks.router, prefix="/v1/webhooks", tags=["webhooks"])
 
 

@@ -1,6 +1,7 @@
 """Tenant CRUD and API-key management endpoints."""
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import datetime, timezone
 
@@ -17,11 +18,13 @@ from einv_common.schemas.tenant import (
     ApiKeyCreated,
     ApiKeyOut,
     TenantCreate,
+    TenantCreated,
     TenantOut,
     TenantUpdate,
 )
 from app.auth_utils import generate_api_key
 from app.deps import get_current_user, get_session, require_super_admin, require_tenant_admin
+from pipeline.webhook_dispatcher import validate_webhook_url
 
 router = APIRouter()
 
@@ -32,6 +35,24 @@ def _check_tenant_access(user: AdminUser, tenant_id: uuid.UUID) -> None:
         return
     if user.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+
+def _validate_webhook_url_field(url: str | None) -> None:
+    """Raise 422 if the URL fails SSRF validation."""
+    if url is None:
+        return
+    try:
+        validate_webhook_url(url)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "INVALID_WEBHOOK_URL", "message": str(exc)},
+        ) from exc
+
+
+def _generate_webhook_secret() -> str:
+    """Generate a 32-byte (64 hex char) random secret."""
+    return secrets.token_hex(32)
 
 
 # ---------------------------------------------------------------------------
@@ -55,19 +76,25 @@ async def list_tenants(
     )
 
 
-@router.post("", response_model=TenantOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TenantCreated, status_code=status.HTTP_201_CREATED)
 async def create_tenant(
     body: TenantCreate,
     user: AdminUser = Depends(require_super_admin),
     session: AsyncSession = Depends(get_session),
-) -> TenantOut:
+) -> TenantCreated:
     existing = (await session.execute(
         select(Tenant).where(Tenant.slug == body.slug)
     )).scalar_one_or_none()
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slug already taken")
 
-    tenant = Tenant(**body.model_dump())
+    _validate_webhook_url_field(body.webhook_url)
+
+    webhook_secret = _generate_webhook_secret()
+    tenant = Tenant(
+        **body.model_dump(),
+        webhook_secret=webhook_secret,
+    )
     session.add(tenant)
     session.add(AuditLog(
         tenant_id=tenant.id,
@@ -77,7 +104,9 @@ async def create_tenant(
     ))
     await session.commit()
     await session.refresh(tenant)
-    return TenantOut.model_validate(tenant)
+
+    base = TenantOut.model_validate(tenant)
+    return TenantCreated(**base.model_dump(), webhook_secret=webhook_secret)
 
 
 @router.get("/{tenant_id}", response_model=TenantOut)
@@ -105,18 +134,50 @@ async def update_tenant(
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
-    for field, value in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_unset=True)  # exclude_unset, not exclude_none — allows clearing nullable fields
+    if "webhook_url" in updates:
+        _validate_webhook_url_field(updates["webhook_url"])
+
+    for field, value in updates.items():
         setattr(tenant, field, value)
 
     session.add(AuditLog(
         tenant_id=tenant_id,
         action="tenant_updated",
         actor=user.email,
-        details=body.model_dump(exclude_none=True),
+        details=updates,
     ))
     await session.commit()
     await session.refresh(tenant)
     return TenantOut.model_validate(tenant)
+
+
+@router.post("/{tenant_id}/rotate-webhook-secret", response_model=dict)
+async def rotate_webhook_secret(
+    tenant_id: uuid.UUID,
+    user: AdminUser = Depends(require_super_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Rotate the webhook signing secret. Returns the new secret once — store it immediately."""
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    new_secret = _generate_webhook_secret()
+    tenant.webhook_secret = new_secret
+    session.add(AuditLog(
+        tenant_id=tenant_id,
+        action="webhook_secret_rotated",
+        actor=user.email,
+        details={},
+    ))
+    await session.commit()
+
+    return {
+        "tenant_id": str(tenant_id),
+        "webhook_secret": new_secret,
+        "message": "Secret rotated. Update your consumer immediately — the old secret is now invalid.",
+    }
 
 
 @router.delete("/{tenant_id}/deactivate", status_code=status.HTTP_204_NO_CONTENT)
