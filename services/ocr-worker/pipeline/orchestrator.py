@@ -41,7 +41,7 @@ from pipeline.ocr_engine import run_ocr_pages
 from pipeline.preprocessor import preprocess
 from pipeline.scorer import compute_score
 from pipeline.validator import validate as validate_extraction
-from pipeline.webhook_dispatcher import fire_and_forget
+from pipeline.webhook_dispatcher import enqueue_webhook
 from pipeline.xml_parser import parse_xml
 
 logger = structlog.get_logger()
@@ -108,13 +108,12 @@ async def run(document_id: str, tenant_id: str) -> dict:
             doc.processed_at = datetime.now(timezone.utc)
             await session.commit()
 
-            # ── Fire webhook ─────────────────────────────────────────────────
+            # ── Enqueue webhook delivery (after commit — durable Celery task) ──
             if tenant.webhook_url:
-                fire_and_forget(
-                    webhook_url=tenant.webhook_url,
+                enqueue_webhook(
                     document_id=document_id,
                     tenant_id=tenant_id,
-                    status=final_status,
+                    final_status=final_status,
                     confidence_score=result.confidence_score,
                     ocr_engine=result.ocr_engine,
                 )
@@ -127,17 +126,16 @@ async def run(document_id: str, tenant_id: str) -> dict:
 
         except Exception as exc:
             await session.rollback()
-            doc.status = "failed"
+            doc.status = "error"
             doc.error_message = str(exc)[:1000]
             doc.processed_at = datetime.now(timezone.utc)
             await session.commit()
 
             if tenant.webhook_url:
-                fire_and_forget(
-                    webhook_url=tenant.webhook_url,
+                enqueue_webhook(
                     document_id=document_id,
                     tenant_id=tenant_id,
-                    status="failed",
+                    final_status="error",
                     confidence_score=None,
                     ocr_engine=None,
                 )

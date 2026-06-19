@@ -24,6 +24,7 @@ from einv_common.schemas.common import ErrorResponse, PaginatedResponse
 from einv_common.storage import StorageClient
 
 from app.dependencies import get_current_tenant, get_redis, get_storage
+from app.ratelimit import check_quota
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -156,6 +157,9 @@ async def upload_document(
         source_format = _detect_format(content, content_type)
     except UnsupportedFormatError as exc:
         raise HTTPException(415, detail={"code": "UNSUPPORTED_FORMAT", "message": str(exc)})
+
+    # ── Quota check (after size/MIME validation — only valid uploads consume quota) ─
+    await check_quota(tenant, redis)
 
     # ── Dedup by SHA-256 ───────────────────────────────────────────────────
     file_hash = hashlib.sha256(content).hexdigest()
@@ -404,3 +408,89 @@ async def _get_owned_document(
             detail={"code": "DOCUMENT_NOT_FOUND", "document_id": str(document_id)},
         )
     return doc
+
+
+# ── Retry ─────────────────────────────────────────────────────────────────────
+
+_MAX_RETRIES = 3
+
+
+@router.post("/{document_id}/retry", status_code=202, summary="Re-queue a failed document for processing")
+async def retry_document(
+    document_id: uuid.UUID,
+    tenant: Tenant = Depends(get_current_tenant),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    doc = await _get_owned_document(document_id, tenant.id, session)
+
+    if doc.processing_attempts >= _MAX_RETRIES:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "MAX_RETRIES_REACHED",
+                "message": f"Document has been retried {doc.processing_attempts} times (max {_MAX_RETRIES}).",
+            },
+        )
+
+    if doc.status != "error":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "NOT_IN_ERROR_STATE",
+                "message": f"Document status is '{doc.status}'. Retry only allowed when status is 'error'.",
+            },
+        )
+
+    # Atomic update — guards status='error' AND attempts < max in the WHERE to prevent TOCTOU races
+    result = await session.execute(
+        update(Document)
+        .where(
+            Document.id == document_id,
+            Document.tenant_id == tenant.id,
+            Document.status == "error",
+            Document.processing_attempts < _MAX_RETRIES,
+        )
+        .values(
+            status="queued",
+            error_message=None,
+            processing_attempts=Document.processing_attempts + 1,
+            last_retry_at=func.now(),
+        )
+        .returning(Document.id, Document.processing_attempts)
+    )
+    row = result.one_or_none()
+
+    if row is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "NOT_IN_ERROR_STATE",
+                "message": "Document is no longer in 'error' state or max retries reached.",
+            },
+        )
+
+    _, attempt_number = row
+
+    session.add(AuditLog(
+        tenant_id=tenant.id,
+        document_id=document_id,
+        action="retry",
+        actor="api_key",
+        details={"attempt": attempt_number},
+    ))
+    await session.commit()
+
+    celery = get_celery_app()
+    task = celery.send_task(
+        "tasks.process_document",
+        args=[str(document_id), str(tenant.id)],
+        queue="ocr",
+    )
+
+    logger.info("document.retry.queued", document_id=str(document_id), attempt=attempt_number, task_id=str(task.id))
+    return {
+        "document_id": str(document_id),
+        "task_id": str(task.id),
+        "status": "queued",
+        "attempt": attempt_number,
+    }
